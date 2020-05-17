@@ -60,6 +60,9 @@ case0:
 	ldr r0,=sp_tarea1		//R0 = &sp_tarea1
 	ldr r1,[r0]				//R1 = *R0
 	msr msp,r1				//MSP = R1 ==> MSP = sp_tarea1
+
+	pop {r4-r11}  //luego de cambiar de stack, restauro los valores de los registros que no se guardan automáticamente
+
 	//break;
 	b case_end
 
@@ -69,6 +72,8 @@ case1:
 	mov r1,2
 	str r1,[r0]		//estado = 2
 
+	push {r4-r11} 		//guardo los registros que no se guardan automáticamente, antes de cambiar de stack
+
 	ldr r0,=sp_tarea1		//R0 = &sp_tarea1
 	mrs r1,msp				//R1 = MSP
 	str r1,[r0]				//*R0 = R1 ==> sp_tarea1 = MSP
@@ -76,6 +81,9 @@ case1:
 	ldr r0,=sp_tarea2		//R0 = &sp_tarea2
 	ldr r1,[r0]				//R1 = *R0
 	msr msp,r1				//MSP = R1 ==> MSP = sp_tarea1
+
+	pop {r4-r11}	//luego de cambiar de stack, restauro los valores de los registros que no se guardan automáticamente
+
 	//break;
 	b case_end
 
@@ -85,6 +93,8 @@ case2:
 	mov r1,3
 	str r1,[r0]		//estado = 3
 
+	push {r4-r11} 		//guardo los registros que no se guardan automáticamente, antes de cambiar de stack
+
 	ldr r0,=sp_tarea2		//R0 = &sp_tarea2
 	mrs r1,msp				//R1 = MSP
 	str r1,[r0]				//*R0 = R1 ==> sp_tarea2 = MSP
@@ -92,6 +102,9 @@ case2:
 	ldr r0,=sp_tarea3		//R0 = &sp_tarea3
 	ldr r1,[r0]				//R1 = *R0
 	msr msp,r1				//MSP = R1 ==> MSP = sp_tarea3
+
+	pop {r4-r11}	//luego de cambiar de stack, restauro los valores de los registros que no se guardan automáticamente
+
 	//break;
 	b case_end
 
@@ -100,6 +113,8 @@ case3:
 	mov r1,1
 	str r1,[r0]		//estado = 1
 
+	push {r4-r11} 		//guardo los registros que no se guardan automáticamente, antes de cambiar de stack
+
 	ldr r0,=sp_tarea3		//R0 = &sp_tarea3
 	mrs r1,msp				//R1 = MSP
 	str r1,[r0]				//*R0 = R1 ==> sp_tarea3 = MSP
@@ -107,6 +122,8 @@ case3:
 	ldr r0,=sp_tarea1		//R0 = &sp_tarea3
 	ldr r1,[r0]				//R1 = *R0
 	msr msp,r1				//MSP = R1 ==> MSP = sp_tarea1
+
+	pop {r4-r11}	//luego de cambiar de stack, restauro los valores de los registros que no se guardan automáticamente
 
 case_end:
 	bx lr			//Branch indirecto, se carga en PC lo que hay el LR (EXEC_RETURN)

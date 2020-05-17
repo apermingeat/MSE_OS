@@ -20,7 +20,7 @@
 	*/
 	.data
 		estado: .word 0					//Variable necesaria para seguimiento de siguiente tarea;
-		.extern sp_tarea1,sp_tarea2		//Variables donde se guardan los stack pointers
+		.extern sp_tarea1,sp_tarea2, sp_tarea3		//Variables donde se guardan los stack pointers
 
 
 	/*
@@ -44,7 +44,10 @@ tabla:							//construccion de un switch-case en asm
 	.byte (case0-tabla)/2
 	.byte (case1-tabla)/2
 	.byte (case2-tabla)/2
+	.byte (case3-tabla)/2
 	.byte (case_end-tabla)/2
+	.byte (case_end-tabla)/2
+
 
 
 
@@ -77,16 +80,31 @@ case1:
 	b case_end
 
 
-/****** Si se expropio el CPU a la tarea2 (estado == 2), debemos cargar en MSP el contenido de sp_tarea1 ****/
+/****** Si se expropio el CPU a la tarea2 (estado == 2), debemos cargar en MSP el contenido de sp_tarea3 ****/
 case2:
-	mov r1,1
-	str r1,[r0]		//estado = 1
+	mov r1,3
+	str r1,[r0]		//estado = 3
 
 	ldr r0,=sp_tarea2		//R0 = &sp_tarea2
 	mrs r1,msp				//R1 = MSP
 	str r1,[r0]				//*R0 = R1 ==> sp_tarea2 = MSP
 
-	ldr r0,=sp_tarea1		//R0 = &sp_tarea1
+	ldr r0,=sp_tarea3		//R0 = &sp_tarea3
+	ldr r1,[r0]				//R1 = *R0
+	msr msp,r1				//MSP = R1 ==> MSP = sp_tarea3
+	//break;
+	b case_end
+
+/****** Si se expropio el CPU a la tarea3 (estado == 3), debemos cargar en MSP el contenido de sp_tarea1 ****/
+case3:
+	mov r1,1
+	str r1,[r0]		//estado = 1
+
+	ldr r0,=sp_tarea3		//R0 = &sp_tarea3
+	mrs r1,msp				//R1 = MSP
+	str r1,[r0]				//*R0 = R1 ==> sp_tarea3 = MSP
+
+	ldr r0,=sp_tarea1		//R0 = &sp_tarea3
 	ldr r1,[r0]				//R1 = *R0
 	msr msp,r1				//MSP = R1 ==> MSP = sp_tarea1
 

@@ -10,12 +10,32 @@
 
 #include <stdint.h>
 
-
 /************************************************************************************
  * 			Tamaño del stack predefinido para cada tarea expresado en bytes
  ***********************************************************************************/
 
 #define STACK_SIZE 256
+
+typedef enum
+{
+	os_task_state__running,
+	os_task_state__ready,
+	os_task_state__blocked,
+	os_task_state__suspended
+
+} os_TaskState_t;
+
+typedef struct
+{
+	uint32_t stack[STACK_SIZE/4];
+	uint32_t stackPointer;
+	void *entryPoint;
+	os_TaskState_t state;
+	uint8_t priority;
+	uint8_t taskID;
+	uint32_t blockedTicks;
+} os_TaskHandler_t;
+
 
 //----------------------------------------------------------------------------------
 
@@ -67,7 +87,7 @@ extern uint32_t sp_tarea3;					//Stack Pointer para la tarea 3
 
 /*==================[definicion de prototipos]=================================*/
 
-void os_InitTarea(void *tarea, uint32_t *stack, uint32_t *stack_pointer);
+void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint);
 
 void os_Init(void);
 

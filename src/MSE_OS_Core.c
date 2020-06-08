@@ -8,29 +8,35 @@
 #include "MSE_OS_Core.h"
 #include "board.h"
 
+#define OS_MAX_ALLOWED_TASKS	8
 
 typedef enum
 {
-	os_state_running,
-	os_state_ready,
-	os_state_blocked,
-	os_state_suspended
+	os_control_error_none,
+	os_control_error_max_task_exceeded,
+	os_control_error_no_task_added
+} os_control_error_t;
 
-} os_TaskState_t;
+typedef enum
+{
+	os_control_state__os_from_reset,
+	os_control_state__os_running,
+	os_control_state__os_error
+} os_control_state_t;
 
 typedef struct
 {
-	uint32_t stack[STACK_SIZE];
-	uint32_t *stackPointer;
-	void *entryPoint;
-	os_TaskState_t state;
-	uint8_t priority;
-	uint8_t taskID;
-	uint32_t blockedTicks;
-} os_TaksHandler_t;
+	os_TaskHandler_t *tasks[OS_MAX_ALLOWED_TASKS];
+	uint8_t actualTaskIndex;
+	uint8_t tasksAdded;
+	os_TaskHandler_t * actualTask;
+	os_TaskHandler_t * nextTask;
+	os_control_error_t error;
+	os_control_state_t state;
 
-static uint8_t id_tarea_actual = 0;
+} os_control_t;
 
+static os_control_t os_control;
 
 /*************************************************************************************************
 	 *  @brief Inicializa las tareas que correran en el OS.
@@ -40,25 +46,41 @@ static uint8_t id_tarea_actual = 0;
      *   Es necesario llamar a esta funcion para cada tarea antes que inicie
      *   el OS.
      *
-	 *  @param *tarea			Puntero a la tarea que se desea inicializar.
-	 *  @param *stack			Puntero al espacio reservado como stack para la tarea.
-	 *  @param *stack_pointer   Puntero a la variable que almacena el stack pointer de la tarea.
+	 *  @param *taskHandler			Puntero al handler de tarea que se desea inicializar.
+	 *  @param *entryPoint			Puntero a la Rutina que se ejecutará en dicha tarea
 	 *  @return     None.
 ***************************************************************************************************/
-void os_InitTarea(void *tarea, uint32_t *stack_tarea, uint32_t *stack_pointer)  {
+void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint)
+{
 
-	stack_tarea[STACK_SIZE/4 - XPSR] = INIT_XPSR;								//necesari para bit thumb
-	stack_tarea[STACK_SIZE/4 - PC_REG] = (uint32_t)tarea;		//direccion de la tarea (ENTRY_POINT)
+	if (os_control.tasksAdded < OS_MAX_ALLOWED_TASKS)
+	{
+		taskHandler->stack[STACK_SIZE/4 - XPSR] = INIT_XPSR;								//necesari para bit thumb
+		taskHandler->stack[STACK_SIZE/4 - PC_REG] = (uint32_t)entryPoint;		//direccion de la tarea (ENTRY_POINT)
 
-	/**
-	 * El valor previo de LR (que es EXEC_RETURN en este caso) es necesario dado que
-	 * en esta implementacion, se llama a una funcion desde dentro del handler de PendSV
-	 * con lo que el valor de LR se modifica por la direccion de retorno para cuando
-	 * se termina de ejecutar getContextoSiguiente
-	 */
-	stack_tarea[STACK_SIZE/4 - LR_PREV] = EXEC_RETURN;
+		/**
+		 * El valor previo de LR (que es EXEC_RETURN en este caso) es necesario dado que
+		 * en esta implementacion, se llama a una funcion desde dentro del handler de PendSV
+		 * con lo que el valor de LR se modifica por la direccion de retorno para cuando
+		 * se termina de ejecutar getContextoSiguiente
+		 */
+		taskHandler->stack[STACK_SIZE/4 - LR_PREV] = EXEC_RETURN;
 
-	*stack_pointer = (uint32_t) (stack_tarea + STACK_SIZE/4 - STACK_FRAME_ALL_RECORDS_SIZE);
+		taskHandler->entryPoint = entryPoint;
+
+		taskHandler->stackPointer = (uint32_t) (taskHandler->stack + STACK_SIZE/4 - STACK_FRAME_ALL_RECORDS_SIZE);
+
+		taskHandler->state = os_task_state__ready;
+
+		taskHandler->taskID = os_control.tasksAdded;
+
+		os_control.tasks[os_control.tasksAdded] = taskHandler;
+		os_control.tasksAdded++;
+	}
+	else
+	{
+		os_control.error = os_control_error_max_task_exceeded;
+	}
 
 }
 /*************************************************************************************************
@@ -66,22 +88,75 @@ void os_InitTarea(void *tarea, uint32_t *stack_tarea, uint32_t *stack_pointer)  
      *
      *  @details
      *   Inicializa el OS seteando la prioridad de PendSV como la mas baja posible. Es necesario
-     *   llamar esta funcion antes de que inicie el sistema. Es recomendable llamarla luego de
+     *   llamar esta funcion antes de que inicie el sistema. Es mandatorio llamarla luego de
      *   inicializar las tareas
      *
 	 *  @param 		None.
 	 *  @return     None.
 ***************************************************************************************************/
 void os_Init(void)  {
+	uint8_t i;
+
 	/*
 	 * Todas las interrupciones tienen prioridad 0 (la maxima) al iniciar la ejecucion. Para que
 	 * no se de la condicion de fault mencionada en la teoria, debemos bajar su prioridad en el
 	 * NVIC. La cuenta matematica que se observa da la probabilidad mas baja posible.
 	 */
 	NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS)-1);
+
+	os_control.tasksAdded = 0;
+
+	os_control.actualTask = NULL;
+	os_control.nextTask = NULL;
+
+	os_control.error = os_control_error_none;
+	os_control.state = os_control_state__os_from_reset;
+
+	for (i = 0; i<OS_MAX_ALLOWED_TASKS; i++)
+	{
+		os_control.tasks[i] = NULL;
+	}
 }
 
+/*************************************************************************************************
+	 *  @brief Implementa la política de scheduling.
+     *
+     *  @details
+     *   Segun el critero al momento de desarrollo, determina que tarea debe ejecutarse luego, y
+     *   por lo tanto provee los punteros correspondientes para el cambio de contexto. Esta
+     *   implementacion de scheduler es muy sencilla, del tipo Round-Robin
+     *
+	 *  @param 		None.
+	 *  @return     None.
+***************************************************************************************************/
+static void os_schedule()
+{
+	if (os_control_state__os_from_reset == os_control.state)
+	{
+		if (0 == os_control.tasksAdded)
+		{
+			os_control.state = os_control_state__os_error;
+			os_control.error = os_control_error_no_task_added;
 
+		}
+		else
+		{
+			/*seleccionar la primer tarea para que sea ejecutada*/
+			os_control.actualTaskIndex = 0;
+			os_control.actualTask = os_control.tasks[os_control.actualTaskIndex];
+		}
+	}
+	else
+	{
+		os_control.actualTaskIndex++;
+		if (os_control.actualTaskIndex >= os_control.tasksAdded)
+		{
+			os_control.actualTaskIndex = 0;
+		}
+
+		os_control.nextTask = os_control.tasks[os_control.actualTaskIndex];
+	}
+}
 /*************************************************************************************************
 	 *  @brief SysTick Handler.
      *
@@ -93,6 +168,8 @@ void os_Init(void)  {
 	 *  @return     None.
 ***************************************************************************************************/
 void SysTick_Handler(void)  {
+
+	os_schedule();
 
 	/**
 	 * Se setea el bit correspondiente a la excepcion PendSV
@@ -112,6 +189,8 @@ void SysTick_Handler(void)  {
 	__DSB();
 }
 
+
+
 /*************************************************************************************************
 	 *  @brief Get contexto siguiente.
      *
@@ -126,29 +205,24 @@ uint32_t getContextoSiguiente(uint32_t p_stack_actual)
 {
 	uint32_t p_stack_siguiente = p_stack_actual; /* por defecto continuo con la tarea actual*/
 
-	switch(id_tarea_actual)
+	if (os_control_state__os_from_reset == os_control.state)
 	{
-		case 0 : /* es la inicialización, debo continuar con la tarea con ID 1 */
-			/*aquí no resguardo el stack del main, lo descarto porque no se utilizará más*/
-			id_tarea_actual = 1;
-			p_stack_siguiente = sp_tarea1;
-			break;
-		case 1: /* tarea actual con ID 1, debo continuar con la tarea con ID 2 */
-			sp_tarea1 = p_stack_actual;
-			id_tarea_actual = 2;
-			p_stack_siguiente = sp_tarea2;
-			break;
-		case 2: /* tarea actual con ID 2, debo continuar con la tarea con ID 3 */
-			sp_tarea2 = p_stack_actual;
-			id_tarea_actual = 3;
-			p_stack_siguiente = sp_tarea3;
-			break;
-		case 3: /* tarea actual con ID 3, debo continuar con la tarea con ID 1 */
-			sp_tarea3 = p_stack_actual;
-			id_tarea_actual = 1;
-			p_stack_siguiente = sp_tarea1;
-			break;
+		p_stack_siguiente = os_control.actualTask->stackPointer;
+		os_control.actualTask->state = os_task_state__running;
+		os_control.state = os_control_state__os_running;
 	}
+	else
+	{
+		os_control.actualTask->stackPointer = p_stack_actual;
+		os_control.actualTask->state = os_task_state__ready;
+
+		p_stack_siguiente = os_control.nextTask->stackPointer;
+
+		os_control.actualTask = os_control.nextTask;
+		os_control.actualTask->state = os_task_state__running;
+
+	}
+
 	return(p_stack_siguiente);
 }
 

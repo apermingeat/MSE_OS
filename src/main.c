@@ -12,14 +12,7 @@
 
 /*==================[Global data declaration]==============================*/
 
-uint32_t stack1[STACK_SIZE];		//espacio reservado para el stack de la tarea 1
-uint32_t stack2[STACK_SIZE];		//espacio reservado para el stack de la tarea 2
-uint32_t stack3[STACK_SIZE];		//espacio reservado para el stack de la tarea 3
-
-uint32_t sp_tarea1;					//Stack Pointer para la tarea 1
-uint32_t sp_tarea2;					//Stack Pointer para la tarea 2
-uint32_t sp_tarea3;					//Stack Pointer para la tarea 3
-
+os_TaskHandler_t task1, task2, task3;
 
 
 /*==================[internal functions declaration]=========================*/
@@ -70,9 +63,9 @@ int main(void)  {
 
 	os_Init();
 
-	os_InitTarea(tarea1, &stack1, &sp_tarea1);
-	os_InitTarea(tarea2, &stack2, &sp_tarea2);
-	os_InitTarea(tarea3, &stack3, &sp_tarea3);
+	os_InitTask(&task1, tarea1);
+	os_InitTask(&task2, tarea2);
+	os_InitTask(&task3, tarea3);
 
 	while (1) {
 		__WFI();

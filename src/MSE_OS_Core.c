@@ -1,12 +1,33 @@
 /*
  * MSE_OS_Core.c
  *
- *  Created on: 26 mar. 2020
- *      Author: gonza
+ *  Created on: 17 mayo 2020
+ *      Author: Alejandro Permingeat
  */
 
 #include "MSE_OS_Core.h"
 #include "board.h"
+
+
+typedef enum
+{
+	os_state_running,
+	os_state_ready,
+	os_state_blocked,
+	os_state_suspended
+
+} os_TaskState_t;
+
+typedef struct
+{
+	uint32_t stack[STACK_SIZE];
+	uint32_t *stackPointer;
+	void *entryPoint;
+	os_TaskState_t state;
+	uint8_t priority;
+	uint8_t taskID;
+	uint32_t blockedTicks;
+} os_TaksHandler_t;
 
 static uint8_t id_tarea_actual = 0;
 

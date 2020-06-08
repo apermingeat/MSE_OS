@@ -1,8 +1,8 @@
 /*
  * MSE_OS_Core.h
  *
- *  Created on: 26 mar. 2020
- *      Author: gonza
+ *  Created on: 17 mayo 2020
+ *      Author: Alejandro Permingeat
  */
 
 #ifndef ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_

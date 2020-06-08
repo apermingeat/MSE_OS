@@ -72,6 +72,11 @@ int main(void)  {
 	}
 }
 
+static uint32_t global_tickCounter = 0;
+void tickHook(void)
+{
+	global_tickCounter++;
+}
 /** @} doxygen end group definition */
 
 /*==================[end of file]============================================*/

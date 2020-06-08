@@ -38,6 +38,27 @@ typedef struct
 
 static os_control_t os_control;
 
+
+void __attribute__((weak)) returnHook(void)  {
+	while(1);
+}
+
+void __attribute__((weak)) tickHook(void)  {
+	__asm volatile( "nop" );
+}
+
+/*El siguinte hook no está implementado aun*/
+void __attribute__((weak)) taskIdleHook(void)  {
+	__asm volatile( "nop" );
+}
+
+void __attribute__((weak)) errorHook(void *caller)  {
+	/* el error del sistema operativo se encuentra en os_control.error
+	 * TODO: agregar un método que devuelva el error*/
+	while(1);
+}
+
+
 /*************************************************************************************************
 	 *  @brief Inicializa las tareas que correran en el OS.
      *
@@ -55,9 +76,9 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint)
 
 	if (os_control.tasksAdded < OS_MAX_ALLOWED_TASKS)
 	{
-		taskHandler->stack[STACK_SIZE/4 - XPSR] = INIT_XPSR;								//necesari para bit thumb
+		taskHandler->stack[STACK_SIZE/4 - XPSR] = INIT_XPSR;					//necesario para bit thumb
 		taskHandler->stack[STACK_SIZE/4 - PC_REG] = (uint32_t)entryPoint;		//direccion de la tarea (ENTRY_POINT)
-
+		taskHandler->stack[STACK_SIZE/4 - LR] = (uint32_t)returnHook;			//Retorno en la rutina de la tarea. Esto no está permitido
 		/**
 		 * El valor previo de LR (que es EXEC_RETURN en este caso) es necesario dado que
 		 * en esta implementacion, se llama a una funcion desde dentro del handler de PendSV
@@ -80,6 +101,7 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint)
 	else
 	{
 		os_control.error = os_control_error_max_task_exceeded;
+		errorHook(os_InitTask);
 	}
 
 }
@@ -137,6 +159,7 @@ static void os_schedule()
 		{
 			os_control.state = os_control_state__os_error;
 			os_control.error = os_control_error_no_task_added;
+			errorHook(os_schedule);
 
 		}
 		else
@@ -170,6 +193,9 @@ static void os_schedule()
 void SysTick_Handler(void)  {
 
 	os_schedule();
+
+	/*Ejecutar el hook asociado al tick*/
+	tickHook();
 
 	/**
 	 * Se setea el bit correspondiente a la excepcion PendSV

@@ -14,7 +14,8 @@ typedef enum
 {
 	os_control_error_none,
 	os_control_error_max_task_exceeded,
-	os_control_error_no_task_added
+	os_control_error_no_task_added,
+	os_control_error_task_with_invalid_state
 } os_control_error_t;
 
 typedef enum
@@ -33,11 +34,12 @@ typedef struct
 	os_TaskHandler_t * nextTask;
 	os_control_error_t error;
 	os_control_state_t state;
+	bool continueActualTask;
 
 } os_control_t;
 
 static os_control_t os_control;
-
+static os_TaskHandler_t os_idleTask;
 
 void __attribute__((weak)) returnHook(void)  {
 	while(1);
@@ -105,6 +107,30 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint)
 	}
 
 }
+
+void initIdleTask()
+{
+	os_idleTask.stack[STACK_SIZE/4 - XPSR] = INIT_XPSR;					//necesario para bit thumb
+	os_idleTask.stack[STACK_SIZE/4 - PC_REG] = (uint32_t)taskIdleHook;		//direccion de la tarea (ENTRY_POINT)
+	os_idleTask.stack[STACK_SIZE/4 - LR] = (uint32_t)returnHook;			//Retorno en la rutina de la tarea. Esto no está permitido
+			/**
+			 * El valor previo de LR (que es EXEC_RETURN en este caso) es necesario dado que
+			 * en esta implementacion, se llama a una funcion desde dentro del handler de PendSV
+			 * con lo que el valor de LR se modifica por la direccion de retorno para cuando
+			 * se termina de ejecutar getContextoSiguiente
+			 */
+	os_idleTask.stack[STACK_SIZE/4 - LR_PREV] = EXEC_RETURN;
+
+	os_idleTask.entryPoint = taskIdleHook;
+
+	os_idleTask.stackPointer = (uint32_t) (os_idleTask.stack + STACK_SIZE/4 - STACK_FRAME_ALL_RECORDS_SIZE);
+
+	os_idleTask.state = os_task_state__ready;
+
+	os_idleTask.taskID = OS_IDLE_TASK_ID;
+}
+
+
 /*************************************************************************************************
 	 *  @brief Inicializa el OS.
      *
@@ -126,7 +152,8 @@ void os_Init(void)  {
 	 */
 	NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS)-1);
 
-	os_control.tasksAdded = 0;
+
+	initIdleTask();
 
 	os_control.actualTask = NULL;
 	os_control.nextTask = NULL;
@@ -134,7 +161,7 @@ void os_Init(void)  {
 	os_control.error = os_control_error_none;
 	os_control.state = os_control_state__os_from_reset;
 
-	for (i = 0; i<OS_MAX_ALLOWED_TASKS; i++)
+	for (i = os_control.tasksAdded; i<OS_MAX_ALLOWED_TASKS; i++)
 	{
 		os_control.tasks[i] = NULL;
 	}
@@ -153,6 +180,12 @@ void os_Init(void)  {
 ***************************************************************************************************/
 static void os_schedule()
 {
+	uint8_t id;
+	bool seekForTask, allBlocked;
+	uint8_t blockedTasksCounter = 0;
+
+	os_control.continueActualTask = false;
+
 	if (os_control_state__os_from_reset == os_control.state)
 	{
 		if (0 == os_control.tasksAdded)
@@ -171,13 +204,62 @@ static void os_schedule()
 	}
 	else
 	{
-		os_control.actualTaskIndex++;
-		if (os_control.actualTaskIndex >= os_control.tasksAdded)
+		//os_control.actualTaskIndex++;
+		id = os_control.actualTaskIndex;
+		seekForTask = true;
+		allBlocked = false;
+		while (seekForTask)
 		{
-			os_control.actualTaskIndex = 0;
+			id++;
+			if (id >= os_control.tasksAdded)
+			{
+				id = 0;
+			}
+			switch (os_control.tasks[id]->state)
+			{
+				case 	os_task_state__ready:
+					seekForTask = false;
+					break;
+				case	os_task_state__blocked:
+					blockedTasksCounter++;
+					if (blockedTasksCounter >= os_control.tasksAdded)
+					{
+						/*all tasks blocked*/
+						seekForTask = false;
+						allBlocked = true;
+					}
+					break;
+				case os_task_state__running:
+					/*all tasks are blocked except the one that was running*/
+					seekForTask = false;
+					break;
+				case os_task_state__suspended:
+					/*Nothing to do now*/
+					break;
+				default:
+					os_control.state = os_control_state__os_error;
+					os_control.error = os_control_error_task_with_invalid_state;
+					seekForTask = false;
+					errorHook(os_schedule);
+			}
 		}
 
-		os_control.nextTask = os_control.tasks[os_control.actualTaskIndex];
+		if (allBlocked)
+		{
+			/*No one task ready, run Idle Task */
+			os_control.nextTask = &os_idleTask;
+		}
+		else if (id != os_control.actualTaskIndex)
+		{
+			os_control.actualTaskIndex = id;
+			os_control.nextTask = os_control.tasks[os_control.actualTaskIndex];
+		}
+		else
+		{
+			/*only actual task is ready to continue*/
+			os_control.continueActualTask = true;
+		}
+
 	}
 }
 /*************************************************************************************************
@@ -239,14 +321,20 @@ uint32_t getContextoSiguiente(uint32_t p_stack_actual)
 	}
 	else
 	{
-		os_control.actualTask->stackPointer = p_stack_actual;
-		os_control.actualTask->state = os_task_state__ready;
+		if (!os_control.continueActualTask)
+		{
+			os_control.actualTask->stackPointer = p_stack_actual;
 
-		p_stack_siguiente = os_control.nextTask->stackPointer;
+			if (os_task_state__running == os_control.actualTask->state)
+			{
+				os_control.actualTask->state = os_task_state__ready;
+			}
 
-		os_control.actualTask = os_control.nextTask;
-		os_control.actualTask->state = os_task_state__running;
+			p_stack_siguiente = os_control.nextTask->stackPointer;
 
+			os_control.actualTask = os_control.nextTask;
+			os_control.actualTask->state = os_task_state__running;
+		}
 	}
 
 	return(p_stack_siguiente);

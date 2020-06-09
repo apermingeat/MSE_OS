@@ -61,11 +61,11 @@ int main(void)  {
 
 	initHardware();
 
-	os_Init();
-
 	os_InitTask(&task1, tarea1);
 	os_InitTask(&task2, tarea2);
 	os_InitTask(&task3, tarea3);
+
+	os_Init();
 
 	while (1) {
 		__WFI();
@@ -77,6 +77,16 @@ void tickHook(void)
 {
 	global_tickCounter++;
 }
+
+static uint32_t globla_idleTaskCounter = 0;
+void taskIdleHook()
+{
+	while(1)
+	{
+		globla_idleTaskCounter++;
+	}
+}
+
 /** @} doxygen end group definition */
 
 /*==================[end of file]============================================*/

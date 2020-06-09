@@ -60,6 +60,7 @@ void __attribute__((weak)) errorHook(void *caller)  {
 	while(1);
 }
 
+static void setPendSV();
 
 /*************************************************************************************************
 	 *  @brief Inicializa las tareas que correran en el OS.
@@ -276,9 +277,17 @@ void SysTick_Handler(void)  {
 
 	os_schedule();
 
+	if (!os_control.continueActualTask)
+	{
+		setPendSV();
+	}
+
 	/*Ejecutar el hook asociado al tick*/
 	tickHook();
+}
 
+void setPendSV()
+{
 	/**
 	 * Se setea el bit correspondiente a la excepcion PendSV
 	 */
@@ -295,6 +304,8 @@ void SysTick_Handler(void)  {
 	 * completed before next instruction is executed
 	 */
 	__DSB();
+
+
 }
 
 
@@ -321,20 +332,19 @@ uint32_t getContextoSiguiente(uint32_t p_stack_actual)
 	}
 	else
 	{
-		if (!os_control.continueActualTask)
+
+		os_control.actualTask->stackPointer = p_stack_actual;
+
+		if (os_task_state__running == os_control.actualTask->state)
 		{
-			os_control.actualTask->stackPointer = p_stack_actual;
-
-			if (os_task_state__running == os_control.actualTask->state)
-			{
-				os_control.actualTask->state = os_task_state__ready;
-			}
-
-			p_stack_siguiente = os_control.nextTask->stackPointer;
-
-			os_control.actualTask = os_control.nextTask;
-			os_control.actualTask->state = os_task_state__running;
+			os_control.actualTask->state = os_task_state__ready;
 		}
+
+		p_stack_siguiente = os_control.nextTask->stackPointer;
+
+		os_control.actualTask = os_control.nextTask;
+		os_control.actualTask->state = os_task_state__running;
+
 	}
 
 	return(p_stack_siguiente);

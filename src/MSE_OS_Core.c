@@ -15,7 +15,8 @@ typedef enum
 	os_control_error_none,
 	os_control_error_max_task_exceeded,
 	os_control_error_no_task_added,
-	os_control_error_task_with_invalid_state
+	os_control_error_task_with_invalid_state,
+	os_control_error_task_max_priority_exceeded
 } os_control_error_t;
 
 typedef enum
@@ -27,6 +28,22 @@ typedef enum
 
 typedef struct
 {
+	os_TaskHandler_t *tasks[OS_MAX_ALLOWED_TASKS];
+	uint8_t actualTaskId;
+	uint8_t numberOfTasks;
+
+} os_schedule_elem_t;
+
+typedef struct
+{
+	os_schedule_elem_t tasksGroupedByPriority[OS_CONTROL_MAX_PRIORITY+1];
+
+} os_schedule_control_t;
+
+
+typedef struct
+{
+	os_schedule_control_t schedule;
 	os_TaskHandler_t *tasks[OS_MAX_ALLOWED_TASKS];
 	uint8_t actualTaskIndex;
 	uint8_t tasksAdded;
@@ -40,6 +57,8 @@ typedef struct
 
 static os_control_t os_control;
 static os_TaskHandler_t os_idleTask;
+
+
 
 void __attribute__((weak)) returnHook(void)  {
 	while(1);
@@ -72,12 +91,23 @@ static void setPendSV();
      *
 	 *  @param *taskHandler			Puntero al handler de tarea que se desea inicializar.
 	 *  @param *entryPoint			Puntero a la Rutina que se ejecutará en dicha tarea
+	 *  @param priority				Prioridad de la tares (0 mayor prioridad -- 4 menor prioridad)
 	 *  @return     None.
 ***************************************************************************************************/
-void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint)
+void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priority)
 {
 
-	if (os_control.tasksAdded < OS_MAX_ALLOWED_TASKS)
+	if (os_control.tasksAdded >= OS_MAX_ALLOWED_TASKS)
+	{
+		os_control.error = os_control_error_max_task_exceeded;
+		errorHook(os_InitTask);
+	}
+	else if (priority > OS_CONTROL_MAX_PRIORITY)
+	{
+		os_control.error = os_control_error_task_max_priority_exceeded;
+		errorHook(os_InitTask);
+	}
+	else
 	{
 		taskHandler->stack[STACK_SIZE/4 - XPSR] = INIT_XPSR;					//necesario para bit thumb
 		taskHandler->stack[STACK_SIZE/4 - PC_REG] = (uint32_t)entryPoint;		//direccion de la tarea (ENTRY_POINT)
@@ -98,14 +128,17 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint)
 
 		taskHandler->taskID = os_control.tasksAdded;
 
+		taskHandler->priority = priority;
+
+		os_control.schedule.tasksGroupedByPriority[priority].tasks[
+		      os_control.schedule.tasksGroupedByPriority[priority].numberOfTasks] = taskHandler;
+
+		os_control.schedule.tasksGroupedByPriority[priority].numberOfTasks++;
+
 		os_control.tasks[os_control.tasksAdded] = taskHandler;
 		os_control.tasksAdded++;
 	}
-	else
-	{
-		os_control.error = os_control_error_max_task_exceeded;
-		errorHook(os_InitTask);
-	}
+
 
 }
 
@@ -168,62 +201,36 @@ void os_Init(void)  {
 	}
 }
 
-/*************************************************************************************************
-	 *  @brief Implementa la política de scheduling.
-     *
-     *  @details
-     *   Segun el critero al momento de desarrollo, determina que tarea debe ejecutarse luego, y
-     *   por lo tanto provee los punteros correspondientes para el cambio de contexto. Esta
-     *   implementacion de scheduler es muy sencilla, del tipo Round-Robin
-     *
-	 *  @param 		None.
-	 *  @return     None.
-***************************************************************************************************/
-static void os_schedule()
+static os_TaskHandler_t * os_select_next_task_by_pririty(uint8_t priority)
 {
 	uint8_t id;
 	bool seekForTask, allBlocked;
 	uint8_t blockedTasksCounter = 0;
+	os_TaskHandler_t * taskSelected = NULL;
 
-	os_control.continueActualTask = false;
-
-	if (os_control_state__os_from_reset == os_control.state)
+	id = os_control.schedule.tasksGroupedByPriority[priority].actualTaskId;
+	/* Solo buscar una posible tarea a ejecutar, si al menos hay una tarea
+	 * agregada en esta prioridad */
+	if (0 < os_control.schedule.tasksGroupedByPriority[priority].numberOfTasks)
 	{
-		if (0 == os_control.tasksAdded)
-		{
-			os_control.state = os_control_state__os_error;
-			os_control.error = os_control_error_no_task_added;
-			errorHook(os_schedule);
-
-		}
-		else
-		{
-			/*seleccionar la primer tarea para que sea ejecutada*/
-			os_control.actualTaskIndex = 0;
-			os_control.actualTask = os_control.tasks[os_control.actualTaskIndex];
-		}
-	}
-	else
-	{
-		//os_control.actualTaskIndex++;
-		id = os_control.actualTaskIndex;
 		seekForTask = true;
 		allBlocked = false;
 		while (seekForTask)
 		{
 			id++;
-			if (id >= os_control.tasksAdded)
+			if (id >= os_control.schedule.tasksGroupedByPriority[priority].numberOfTasks)
 			{
 				id = 0;
 			}
-			switch (os_control.tasks[id]->state)
+			switch (os_control.schedule.tasksGroupedByPriority[priority].tasks[id]->state)
 			{
 				case 	os_task_state__ready:
 					seekForTask = false;
 					break;
 				case	os_task_state__blocked:
 					blockedTasksCounter++;
-					if (blockedTasksCounter >= os_control.tasksAdded)
+					if (blockedTasksCounter >=
+							os_control.schedule.tasksGroupedByPriority[priority].numberOfTasks)
 					{
 						/*all tasks blocked*/
 						seekForTask = false;
@@ -241,25 +248,79 @@ static void os_schedule()
 					os_control.state = os_control_state__os_error;
 					os_control.error = os_control_error_task_with_invalid_state;
 					seekForTask = false;
-					errorHook(os_schedule);
+					errorHook(os_select_next_task_by_pririty);
 			}
 		}
 
 		if (allBlocked)
 		{
-			/*No one task ready, run Idle Task */
-			os_control.nextTask = &os_idleTask;
+			/*No one task ready for actual priority */
+			taskSelected = NULL;
 		}
-		else if (id != os_control.actualTaskIndex)
+		else if (id != os_control.schedule.tasksGroupedByPriority[priority].actualTaskId)
 		{
-			os_control.actualTaskIndex = id;
-			os_control.nextTask = os_control.tasks[os_control.actualTaskIndex];
+			os_control.schedule.tasksGroupedByPriority[priority].actualTaskId = id;
+			taskSelected = os_control.schedule.tasksGroupedByPriority[priority].tasks[id];
 		}
 		else
 		{
 			/*only actual task is ready to continue*/
-			os_control.continueActualTask = true;
+			taskSelected = os_control.schedule.tasksGroupedByPriority[priority].tasks[id];
 		}
+	}
+
+	return (taskSelected);
+}
+
+
+/*************************************************************************************************
+	 *  @brief Implementa la política de scheduling.
+     *
+     *  @details
+     *   Segun el critero al momento de desarrollo, determina que tarea debe ejecutarse luego, y
+     *   por lo tanto provee los punteros correspondientes para el cambio de contexto. Esta
+     *   implementacion de scheduler es muy sencilla, del tipo Round-Robin
+     *
+	 *  @param 		None.
+	 *  @return     None.
+***************************************************************************************************/
+static void os_schedule()
+{
+	uint8_t priority = 0;
+	os_TaskHandler_t * taskSelected = NULL;
+
+	os_control.continueActualTask = false;
+
+	if (os_control_state__os_from_reset == os_control.state)
+	{
+		if (0 == os_control.tasksAdded)
+		{
+			os_control.state = os_control_state__os_error;
+			os_control.error = os_control_error_no_task_added;
+			errorHook(os_schedule);
+
+		}
+		else
+		{
+			/*seleccionar la primer tarea para que sea ejecutada*/
+			/*se selecciona como primer tarea a ejecutar la tarea idle*/
+			os_control.actualTask = &os_idleTask;
+		}
+	}
+	else
+	{
+		while ((OS_CONTROL_MAX_PRIORITY > priority) && (NULL == taskSelected))
+		{
+			taskSelected = os_select_next_task_by_pririty(priority);
+			priority++;
+		}
+		if (NULL == taskSelected)
+		{
+			taskSelected = &os_idleTask;
+		}
+		os_control.continueActualTask = (os_control.nextTask == taskSelected);
+
+		os_control.nextTask = taskSelected;
 
 	}
 }

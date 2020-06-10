@@ -17,6 +17,8 @@
 #define STACK_SIZE 256
 #define OS_IDLE_TASK_ID	0xFF
 
+#define OS_CONTROL_MAX_PRIORITY	4
+
 typedef enum
 {
 	os_task_state__running,
@@ -88,7 +90,7 @@ extern uint32_t sp_tarea3;					//Stack Pointer para la tarea 3
 
 /*==================[definicion de prototipos]=================================*/
 
-void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint);
+void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priority);
 
 void os_Init(void);
 

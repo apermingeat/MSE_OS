@@ -61,9 +61,9 @@ int main(void)  {
 
 	initHardware();
 
-	os_InitTask(&task1, tarea1);
-	os_InitTask(&task2, tarea2);
-	os_InitTask(&task3, tarea3);
+	os_InitTask(&task1, tarea1, 2);
+	os_InitTask(&task2, tarea2, 2);
+	os_InitTask(&task3, tarea3, 1);
 
 	os_Init();
 

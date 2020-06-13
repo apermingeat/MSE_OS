@@ -343,6 +343,28 @@ static void os_schedule()
 
 	}
 }
+
+void os_updateTicksInAllTaskBlocked()
+{
+	uint8_t priorityID;
+	uint8_t i;
+	for (priorityID = 0; priorityID< OS_CONTROL_MAX_PRIORITY; priorityID++)
+	{
+		for (i = 0; i< os_control.schedule.tasksGroupedByPriority[priorityID].numberOfTasks; i++)
+		{
+			if ((os_task_state__blocked == os_control.schedule.tasksGroupedByPriority[priorityID].tasks[i]->state) &&
+				(0 < os_control.schedule.tasksGroupedByPriority[priorityID].tasks[i]->blockedTicks))
+			{
+				os_control.schedule.tasksGroupedByPriority[priorityID].tasks[i]->blockedTicks--;
+				if (0 == os_control.schedule.tasksGroupedByPriority[priorityID].tasks[i]->blockedTicks)
+				{
+					os_control.schedule.tasksGroupedByPriority[priorityID].tasks[i]->state = os_task_state__ready;
+				}
+			}
+		}
+	}
+}
+
 /*************************************************************************************************
 	 *  @brief SysTick Handler.
      *
@@ -353,7 +375,9 @@ static void os_schedule()
 	 *  @param 		None.
 	 *  @return     None.
 ***************************************************************************************************/
-void SysTick_Handler(void)  {
+void SysTick_Handler(void)
+{
+	os_updateTicksInAllTaskBlocked();
 
 	os_schedule();
 
@@ -430,3 +454,8 @@ uint32_t getContextoSiguiente(uint32_t p_stack_actual)
 	return(p_stack_siguiente);
 }
 
+
+os_TaskHandler_t* os_getActualtask()
+{
+	return (os_control.actualTask);
+}

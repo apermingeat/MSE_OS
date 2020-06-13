@@ -3,8 +3,10 @@
 #include "main.h"
 
 #include "board.h"
+#include "sapi.h"
 
 #include "MSE_OS_Core.h"
+#include "MSE_OS_API.h"
 
 /*==================[macros and definitions]=================================*/
 
@@ -38,6 +40,8 @@ void tarea1(void)  {
 	int i;
 	while (1) {
 		i++;
+		/*gpioToggle(LED1);
+		os_Delay(200);*/
 	}
 }
 
@@ -45,6 +49,8 @@ void tarea2(void)  {
 	int j;
 	while (1) {
 		j++;
+		gpioToggle(LED2);
+		os_Delay(300);
 	}
 }
 
@@ -52,6 +58,8 @@ void tarea3(void)  {
 	int k;
 	while (1) {
 		k++;
+		gpioToggle(LED3);
+		os_Delay(50);
 	}
 }
 

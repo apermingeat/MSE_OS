@@ -102,6 +102,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/ciaa/inc}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/dsp/inc}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/sapi/inc}&quot;"/>
+									<listOptionValue builtIn="false" value="/usr/lib/gcc/x86_64-linux-gnu/8/include/"/>
 								</option>
 								<inputType id="ilg.gnuarmeclipse.managedbuild.cross.tool.assembler.input.1333770116" superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.assembler.input"/>
 							</tool>
@@ -114,6 +115,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/ciaa/inc}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/dsp/inc}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/sapi/inc}&quot;"/>
+									<listOptionValue builtIn="false" value="/usr/lib/gcc/x86_64-linux-gnu/8/include/"/>
 								</option>
 								<inputType id="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.input.1802164324" superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.input"/>
 							</tool>
@@ -126,6 +128,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/ciaa/inc}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/dsp/inc}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/firmware_v2/modules/lpc4337_m4/sapi/inc}&quot;"/>
+									<listOptionValue builtIn="false" value="/usr/lib/gcc/x86_64-linux-gnu/8/include/"/>
 								</option>
 								<inputType id="ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.input.1764139639" superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.cpp.compiler.input"/>
 							</tool>
@@ -175,4 +178,5 @@
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="refreshScope"/>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
 </cproject>

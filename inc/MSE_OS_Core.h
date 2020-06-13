@@ -9,6 +9,8 @@
 #define ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_
 
 #include <stdint.h>
+#include <stdbool.h>
+#include "board.h"
 
 /************************************************************************************
  * 			Tamaño del stack predefinido para cada tarea expresado en bytes

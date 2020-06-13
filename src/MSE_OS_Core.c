@@ -23,6 +23,7 @@ typedef enum
 {
 	os_control_state__os_from_reset,
 	os_control_state__os_running,
+	os_control_state__os_scheduling,
 	os_control_state__os_error
 } os_control_state_t;
 
@@ -51,7 +52,7 @@ typedef struct
 	os_TaskHandler_t * nextTask;
 	os_control_error_t error;
 	os_control_state_t state;
-	bool continueActualTask;
+	bool contextChangeNeeded;
 
 } os_control_t;
 
@@ -157,8 +158,6 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priori
 void os_CpuYield(void)
 {
 	os_schedule();
-	if(os_control.continueActualTask)
-		setPendSV();
 }
 
 void initIdleTask()
@@ -308,7 +307,7 @@ static void os_schedule()
 	uint8_t priority = 0;
 	os_TaskHandler_t * taskSelected = NULL;
 
-	os_control.continueActualTask = false;
+	os_control.contextChangeNeeded = false;
 
 	if (os_control_state__os_from_reset == os_control.state)
 	{
@@ -324,23 +323,34 @@ static void os_schedule()
 			/*seleccionar la primer tarea para que sea ejecutada*/
 			/*se selecciona como primer tarea a ejecutar la tarea idle*/
 			os_control.actualTask = &os_idleTask;
+			os_control.contextChangeNeeded = true;
 		}
 	}
 	else
 	{
-		while ((OS_CONTROL_MAX_PRIORITY > priority) && (NULL == taskSelected))
+		/* Checkear que el SO no esté en medio de un scheduling en otro hilo */
+		if (os_control_state__os_running == os_control.state)
 		{
-			taskSelected = os_select_next_task_by_pririty(priority);
-			priority++;
-		}
-		if (NULL == taskSelected)
-		{
-			taskSelected = &os_idleTask;
-		}
-		os_control.continueActualTask = (os_control.nextTask == taskSelected);
+			os_control.state = os_control_state__os_scheduling;
+			while ((OS_CONTROL_MAX_PRIORITY > priority) && (NULL == taskSelected))
+			{
+				taskSelected = os_select_next_task_by_pririty(priority);
+				priority++;
+			}
+			if (NULL == taskSelected)
+			{
+				taskSelected = &os_idleTask;
+			}
+			os_control.contextChangeNeeded = (os_control.nextTask != taskSelected);
 
-		os_control.nextTask = taskSelected;
+			os_control.nextTask = taskSelected;
+			os_control.state = os_control_state__os_running;
+		}
+	}
 
+	if (os_control.contextChangeNeeded)
+	{
+		setPendSV();
 	}
 }
 
@@ -380,11 +390,6 @@ void SysTick_Handler(void)
 	os_updateTicksInAllTaskBlocked();
 
 	os_schedule();
-
-	if (!os_control.continueActualTask)
-	{
-		setPendSV();
-	}
 
 	/*Ejecutar el hook asociado al tick*/
 	tickHook();

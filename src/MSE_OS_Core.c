@@ -80,6 +80,7 @@ void __attribute__((weak)) errorHook(void *caller)  {
 }
 
 static void setPendSV();
+static void os_schedule();
 
 /*************************************************************************************************
 	 *  @brief Inicializa las tareas que correran en el OS.
@@ -140,6 +141,24 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priori
 	}
 
 
+}
+
+/*************************************************************************************************
+	 *  @brief Fuerza una ejecucion del scheduler.
+     *
+     *  @details
+     *   En los casos que un delay de una tarea comience a ejecutarse instantes luego de que
+     *   ocurriese un scheduling, se despericia mucho tiempo hasta el proximo tick de sistema,
+     *   por lo que se fuerza un scheduling y un cambio de contexto si es necesario.
+     *
+	 *  @param 		None
+	 *  @return     None.
+***************************************************************************************************/
+void os_CpuYield(void)
+{
+	os_schedule();
+	if(os_control.continueActualTask)
+		setPendSV();
 }
 
 void initIdleTask()

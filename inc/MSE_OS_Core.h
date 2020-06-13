@@ -94,6 +94,7 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priori
 
 void os_Init(void);
 
+void os_CpuYield(void);
 
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */

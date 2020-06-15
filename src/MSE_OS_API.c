@@ -7,6 +7,7 @@
 
 #include "MSE_OS_API.h"
 #include "MSE_OS_Core.h"
+#include <string.h>
 
 void os_Delay(uint32_t ticks)
 {
@@ -33,6 +34,11 @@ void os_Delay(uint32_t ticks)
 		}
 	}
 }
+
+
+/******************************************************************************
+ *	Semaforos
+ ******************************************************************************/
 
 void os_sem_init(os_Semaphore_t * sem)
 {
@@ -81,6 +87,112 @@ void os_sem_give(os_Semaphore_t * sem)
 	{
 		sem->taken = false;
 		sem->takenByTask->state = os_task_state__ready;
+	}
+}
+
+/******************************************************************************
+ *	Colas
+ ******************************************************************************/
+void os_queue_init(os_Queue_t * queue, uint16_t dataSize)
+{
+	queue->elementSize = dataSize;
+	queue->queueSize = 0;
+	queue->maxElements = OS_QUEUE_HEAP_SIZE / dataSize;
+	queue->taskWaitingForIt = NULL;
+	queue->headID = 0;
+	queue->tailID = 0;
+	memset(queue->data, OS_QUEUE_DEFAULT_VALUE,OS_QUEUE_HEAP_SIZE);
+}
+
+void os_queue_insert(os_Queue_t * queue, void * data)
+{
+	os_TaskHandler_t* actualTask;
+
+	/** Se debe realizar los siguiente:
+	 *  1 - Verificar si la cola estaba vacia.
+	 *  2 - En caso de que estaba vacia verificar si había una tarea esperando por un elemento
+	 *  3 - Si había una tarea esperando por un elemento, verificar si su estado era blocked y
+	 *      pasarla a ready */
+
+	if (0 == queue->queueSize)
+	{
+		if ((NULL != queue->taskWaitingForIt) &&
+				(os_task_state__blocked == queue->taskWaitingForIt->state))
+		{
+			queue->taskWaitingForIt->state = os_task_state__ready;
+		}
+	}
+
+	/* Verifico que la tarea actual esté corriendo (y que no haya sido desalojada por el scheduler durante
+	 * la ejecución de la primera parte de esta rutina */
+
+	actualTask = os_getActualtask();
+	if(os_task_state__running == actualTask->state)
+	{
+		/* Mientras la cola esté llena, poner la tarea actual en estado bloqueado y
+		 * ceder el CPU */
+		while (queue->queueSize >= queue->maxElements)
+		{
+			actualTask->state = os_task_state__blocked;
+			queue->taskWaitingForIt = actualTask;
+			os_CpuYield();
+		}
+
+		/* Realizar la inserción del elemento en la cola */
+		memcpy(queue->data + (queue->headID * queue->elementSize), data, queue->elementSize);
+		queue->headID++;
+		if (queue->headID >= queue->maxElements)
+		{
+			queue->headID = 0;
+		}
+		queue->queueSize++;
+		queue->taskWaitingForIt = NULL;
+	}
+}
+
+void os_queue_remove(os_Queue_t * queue, void * data)
+{
+	os_TaskHandler_t* actualTask;
+
+	/** Se debe realizar los siguiente:
+	 *  1 - Verificar si la cola estaba llena.
+	 *  2 - En caso de que estaba llena verificar si había una tarea esperando por insertar un elemento
+	 *  3 - Si había una tarea esperando por insertar un elemento, verificar si su estado era blocked y
+	 *      pasarla a ready */
+
+	if (queue->queueSize >= queue->maxElements)
+	{
+		if ((NULL != queue->taskWaitingForIt) &&
+				(os_task_state__blocked == queue->taskWaitingForIt->state))
+		{
+			queue->taskWaitingForIt->state = os_task_state__ready;
+		}
+	}
+
+	/* Verifico que la tarea actual esté corriendo (y que no haya sido desalojada por el scheduler durante
+	 * la ejecución de la primera parte de esta rutina */
+
+	actualTask = os_getActualtask();
+	if(os_task_state__running == actualTask->state)
+	{
+		/* Mientras la cola esté vacia, poner la tarea actual en estado bloqueado y
+		 * ceder el CPU */
+		while (0 == queue->queueSize)
+		{
+			actualTask->state = os_task_state__blocked;
+			queue->taskWaitingForIt = actualTask;
+			os_CpuYield();
+		}
+
+		/* Realizar la remoción del elemento en la cola */
+		memcpy(data, queue->data + (queue->tailID * queue->elementSize), queue->elementSize);
+		queue->tailID++;
+		if (queue->tailID >= queue->maxElements)
+		{
+			queue->tailID = 0;
+		}
+		queue->queueSize--;
+		queue->taskWaitingForIt = NULL;
 	}
 }
 

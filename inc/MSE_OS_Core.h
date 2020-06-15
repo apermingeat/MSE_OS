@@ -100,5 +100,8 @@ void os_CpuYield(void);
 
 os_TaskHandler_t* os_getActualtask();
 
+void os_enter_critical_zone();
+void os_exit_critical_zone();
+
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */

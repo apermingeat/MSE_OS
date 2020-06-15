@@ -13,12 +13,12 @@ void os_Delay(uint32_t ticks)
 {
 	os_TaskHandler_t* actualTask;
 
-	actualTask = os_getActualtask();
-
-	if ((os_task_state__running == actualTask->state) &&
-		(0 < ticks))
+	if (0 < ticks)
 	{
+		os_enter_critical_zone();
+		actualTask = os_getActualtask();
 		actualTask->blockedTicks = ticks;
+		os_exit_critical_zone();
 
 		/*
 		 * El proximo bloque while tiene la finalidad de asegurarse que la tarea solo se desbloquee
@@ -52,37 +52,32 @@ void os_sem_take(os_Semaphore_t * sem)
 
 	os_TaskHandler_t* actualTask;
 
-	actualTask = os_getActualtask();
-
-	if (os_task_state__running == actualTask->state)
+	while (!taken)
 	{
-		while (!taken)
+		if (sem->taken)
 		{
-			if (sem->taken)
-			{
-				/* esperar hasta que esté libre el semaforo*/
-				actualTask->state = os_task_state__blocked;
-				sem->takenByTask = actualTask;
-				os_CpuYield();
-			}
-			else
-			{
-				sem->taken = true;
-				sem->takenByTask = actualTask;
-				taken = true;
-			}
+			/* esperar hasta que esté libre el semaforo*/
+
+			os_enter_critical_zone();
+			actualTask = os_getActualtask();
+			actualTask->state = os_task_state__blocked;
+			sem->takenByTask = actualTask;
+			os_exit_critical_zone();
+
+			os_CpuYield();
+		}
+		else
+		{
+			sem->taken = true;
+			sem->takenByTask = actualTask;
+			taken = true;
 		}
 	}
 }
 
 void os_sem_give(os_Semaphore_t * sem)
 {
-	os_TaskHandler_t* actualTask;
-
-	actualTask = os_getActualtask();
-
-	if ((os_task_state__running == actualTask->state) &&
-		(sem->taken) &&
+	if ((sem->taken) &&
 		(NULL != sem->takenByTask))
 	{
 		sem->taken = false;
@@ -123,31 +118,28 @@ void os_queue_insert(os_Queue_t * queue, void * data)
 		}
 	}
 
-	/* Verifico que la tarea actual esté corriendo (y que no haya sido desalojada por el scheduler durante
-	 * la ejecución de la primera parte de esta rutina */
-
-	actualTask = os_getActualtask();
-	if(os_task_state__running == actualTask->state)
+	/* Mientras la cola esté llena, poner la tarea actual en estado bloqueado y
+	 * ceder el CPU */
+	while (queue->queueSize >= queue->maxElements)
 	{
-		/* Mientras la cola esté llena, poner la tarea actual en estado bloqueado y
-		 * ceder el CPU */
-		while (queue->queueSize >= queue->maxElements)
-		{
-			actualTask->state = os_task_state__blocked;
-			queue->taskWaitingForIt = actualTask;
-			os_CpuYield();
-		}
+		os_enter_critical_zone();
+		actualTask = os_getActualtask();
+		actualTask->state = os_task_state__blocked;
+		queue->taskWaitingForIt = actualTask;
+		os_exit_critical_zone();
 
-		/* Realizar la inserción del elemento en la cola */
-		memcpy(queue->data + (queue->headID * queue->elementSize), data, queue->elementSize);
-		queue->headID++;
-		if (queue->headID >= queue->maxElements)
-		{
-			queue->headID = 0;
-		}
-		queue->queueSize++;
-		queue->taskWaitingForIt = NULL;
+		os_CpuYield();
 	}
+
+	/* Realizar la inserción del elemento en la cola */
+	memcpy(queue->data + (queue->headID * queue->elementSize), data, queue->elementSize);
+	queue->headID++;
+	if (queue->headID >= queue->maxElements)
+	{
+		queue->headID = 0;
+	}
+	queue->queueSize++;
+	queue->taskWaitingForIt = NULL;
 }
 
 void os_queue_remove(os_Queue_t * queue, void * data)
@@ -172,27 +164,28 @@ void os_queue_remove(os_Queue_t * queue, void * data)
 	/* Verifico que la tarea actual esté corriendo (y que no haya sido desalojada por el scheduler durante
 	 * la ejecución de la primera parte de esta rutina */
 
-	actualTask = os_getActualtask();
-	if(os_task_state__running == actualTask->state)
-	{
-		/* Mientras la cola esté vacia, poner la tarea actual en estado bloqueado y
-		 * ceder el CPU */
-		while (0 == queue->queueSize)
-		{
-			actualTask->state = os_task_state__blocked;
-			queue->taskWaitingForIt = actualTask;
-			os_CpuYield();
-		}
 
-		/* Realizar la remoción del elemento en la cola */
-		memcpy(data, queue->data + (queue->tailID * queue->elementSize), queue->elementSize);
-		queue->tailID++;
-		if (queue->tailID >= queue->maxElements)
-		{
-			queue->tailID = 0;
-		}
-		queue->queueSize--;
-		queue->taskWaitingForIt = NULL;
+	/* Mientras la cola esté vacia, poner la tarea actual en estado bloqueado y
+	 * ceder el CPU */
+	while (0 == queue->queueSize)
+	{
+		os_enter_critical_zone();
+		actualTask = os_getActualtask();
+		actualTask->state = os_task_state__blocked;
+		queue->taskWaitingForIt = actualTask;
+		os_exit_critical_zone();
+
+		os_CpuYield();
 	}
+
+	/* Realizar la remoción del elemento en la cola */
+	memcpy(data, queue->data + (queue->tailID * queue->elementSize), queue->elementSize);
+	queue->tailID++;
+	if (queue->tailID >= queue->maxElements)
+	{
+		queue->tailID = 0;
+	}
+	queue->queueSize--;
+	queue->taskWaitingForIt = NULL;
 }
 

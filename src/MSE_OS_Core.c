@@ -53,6 +53,7 @@ typedef struct
 	os_control_error_t error;
 	os_control_state_t state;
 	bool contextChangeNeeded;
+	int16_t tasksInCriticalZone;
 
 } os_control_t;
 
@@ -217,6 +218,8 @@ void os_Init(void)  {
 	{
 		os_control.tasks[i] = NULL;
 	}
+
+	os_control.tasksInCriticalZone = 0;
 }
 
 static os_TaskHandler_t * os_select_next_task_by_pririty(uint8_t priority)
@@ -463,4 +466,21 @@ uint32_t getContextoSiguiente(uint32_t p_stack_actual)
 os_TaskHandler_t* os_getActualtask()
 {
 	return (os_control.actualTask);
+}
+
+void os_enter_critical_zone()
+{
+	__disable_irq();
+	os_control.tasksInCriticalZone++;
+}
+
+void os_exit_critical_zone()
+{
+	os_control.tasksInCriticalZone--;
+	if (0 >= os_control.tasksInCriticalZone)
+	{
+		os_control.tasksInCriticalZone = 0;
+		__enable_irq();
+	}
+
 }

@@ -10,23 +10,6 @@
 
 #define OS_MAX_ALLOWED_TASKS	8
 
-typedef enum
-{
-	os_control_error_none,
-	os_control_error_max_task_exceeded,
-	os_control_error_no_task_added,
-	os_control_error_task_with_invalid_state,
-	os_control_error_task_max_priority_exceeded
-} os_control_error_t;
-
-typedef enum
-{
-	os_control_state__os_from_reset,
-	os_control_state__os_running,
-	os_control_state__os_scheduling,
-	os_control_state__os_error
-} os_control_state_t;
-
 typedef struct
 {
 	os_TaskHandler_t *tasks[OS_MAX_ALLOWED_TASKS];
@@ -54,6 +37,7 @@ typedef struct
 	os_control_state_t state;
 	bool contextChangeNeeded;
 	int16_t tasksInCriticalZone;
+	bool schedulingFromIRQ;
 
 } os_control_t;
 
@@ -220,6 +204,8 @@ void os_Init(void)  {
 	}
 
 	os_control.tasksInCriticalZone = 0;
+
+	os_setSchedulingFromIRQ(false);
 }
 
 static os_TaskHandler_t * os_select_next_task_by_pririty(uint8_t priority)
@@ -468,6 +454,16 @@ os_TaskHandler_t* os_getActualtask()
 	return (os_control.actualTask);
 }
 
+os_control_state_t os_get_controlState()
+{
+	return(os_control.state);
+}
+
+void os_set_controlState(os_control_state_t newState)
+{
+	os_control.state = newState;
+}
+
 void os_enter_critical_zone()
 {
 	__disable_irq();
@@ -484,3 +480,25 @@ void os_exit_critical_zone()
 	}
 
 }
+
+void os_setSchedulingFromIRQ()
+{
+	os_control.schedulingFromIRQ = true;
+}
+
+void os_clearSchedulingFromIRQ()
+{
+	os_control.schedulingFromIRQ = false;
+}
+
+bool os_isSchedulingFromIRQ()
+{
+	return(os_control.schedulingFromIRQ);
+}
+
+void os_setError(os_control_error_t err, void* caller)
+{
+	os_control.error = err;
+	errorHook(caller);
+}
+

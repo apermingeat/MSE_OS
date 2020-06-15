@@ -23,6 +23,25 @@
 
 typedef enum
 {
+	os_control_error_none,
+	os_control_error_max_task_exceeded,
+	os_control_error_no_task_added,
+	os_control_error_task_with_invalid_state,
+	os_control_error_task_max_priority_exceeded,
+	os_control_error_daly_from_IRQ
+} os_control_error_t;
+
+typedef enum
+{
+	os_control_state__os_from_reset,
+	os_control_state__os_running,
+	os_control_state__os_scheduling,
+	os_control_state__os_error,
+	os_control_state__running_from_IRQ
+} os_control_state_t;
+
+typedef enum
+{
 	os_task_state__running,
 	os_task_state__ready,
 	os_task_state__blocked,
@@ -40,6 +59,7 @@ typedef struct
 	uint8_t taskID;
 	uint32_t blockedTicks;
 } os_TaskHandler_t;
+
 
 
 //----------------------------------------------------------------------------------
@@ -102,6 +122,18 @@ os_TaskHandler_t* os_getActualtask();
 
 void os_enter_critical_zone();
 void os_exit_critical_zone();
+
+os_control_state_t os_get_controlState();
+
+void os_set_controlState(os_control_state_t newState);
+
+void os_setSchedulingFromIRQ();
+
+void os_clearSchedulingFromIRQ();
+
+bool os_isSchedulingFromIRQ();
+
+void os_setError(os_control_error_t err, void* caller);
 
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */

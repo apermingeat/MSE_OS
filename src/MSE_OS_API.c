@@ -13,6 +13,12 @@ void os_Delay(uint32_t ticks)
 {
 	os_TaskHandler_t* actualTask;
 
+	/*No está permitido llamar al delay desde una interrupción*/
+	if (os_control_state__running_from_IRQ == os_get_controlState())
+	{
+		os_setError(os_control_error_daly_from_IRQ, os_Delay);
+	}
+
 	if (0 < ticks)
 	{
 		os_enter_critical_zone();
@@ -82,6 +88,11 @@ void os_sem_give(os_Semaphore_t * sem)
 	{
 		sem->taken = false;
 		sem->takenByTask->state = os_task_state__ready;
+
+		if (os_control_state__running_from_IRQ == os_get_controlState())
+		{
+			os_setSchedulingFromIRQ();
+		}
 	}
 }
 
@@ -116,30 +127,46 @@ void os_queue_insert(os_Queue_t * queue, void * data)
 		{
 			queue->taskWaitingForIt->state = os_task_state__ready;
 		}
+
+		if (os_control_state__running_from_IRQ == os_get_controlState())
+		{
+			os_setSchedulingFromIRQ();
+		}
+
 	}
 
-	/* Mientras la cola esté llena, poner la tarea actual en estado bloqueado y
-	 * ceder el CPU */
-	while (queue->queueSize >= queue->maxElements)
+	/*Si estoy corriendo desde un handler de interrupción y se quiere escribir en una cola
+	 * mientras esta está llena, no debe bloquearse y debe salir inmediatamente */
+	if ((os_control_state__running_from_IRQ == os_get_controlState()) &&
+			(queue->queueSize >= queue->maxElements))
 	{
-		os_enter_critical_zone();
-		actualTask = os_getActualtask();
-		actualTask->state = os_task_state__blocked;
-		queue->taskWaitingForIt = actualTask;
-		os_exit_critical_zone();
 
-		os_CpuYield();
 	}
-
-	/* Realizar la inserción del elemento en la cola */
-	memcpy(queue->data + (queue->headID * queue->elementSize), data, queue->elementSize);
-	queue->headID++;
-	if (queue->headID >= queue->maxElements)
+	else
 	{
-		queue->headID = 0;
+		/* Mientras la cola esté llena, poner la tarea actual en estado bloqueado y
+		 * ceder el CPU */
+		while (queue->queueSize >= queue->maxElements)
+		{
+			os_enter_critical_zone();
+			actualTask = os_getActualtask();
+			actualTask->state = os_task_state__blocked;
+			queue->taskWaitingForIt = actualTask;
+			os_exit_critical_zone();
+
+			os_CpuYield();
+		}
+
+		/* Realizar la inserción del elemento en la cola */
+		memcpy(queue->data + (queue->headID * queue->elementSize), data, queue->elementSize);
+		queue->headID++;
+		if (queue->headID >= queue->maxElements)
+		{
+			queue->headID = 0;
+		}
+		queue->queueSize++;
+		queue->taskWaitingForIt = NULL;
 	}
-	queue->queueSize++;
-	queue->taskWaitingForIt = NULL;
 }
 
 void os_queue_remove(os_Queue_t * queue, void * data)
@@ -159,33 +186,44 @@ void os_queue_remove(os_Queue_t * queue, void * data)
 		{
 			queue->taskWaitingForIt->state = os_task_state__ready;
 		}
+
+		if (os_control_state__running_from_IRQ == os_get_controlState())
+		{
+			os_setSchedulingFromIRQ();
+		}
 	}
 
-	/* Verifico que la tarea actual esté corriendo (y que no haya sido desalojada por el scheduler durante
-	 * la ejecución de la primera parte de esta rutina */
-
-
-	/* Mientras la cola esté vacia, poner la tarea actual en estado bloqueado y
-	 * ceder el CPU */
-	while (0 == queue->queueSize)
+	/*Si estoy corriendo desde un handler de interrupción y se quiere leer de una cola
+	 * mientras esta está vacía, no debe bloquearse y debe salir inmediatamente */
+	if ((os_control_state__running_from_IRQ == os_get_controlState()) &&
+			(0 == queue->queueSize ))
 	{
-		os_enter_critical_zone();
-		actualTask = os_getActualtask();
-		actualTask->state = os_task_state__blocked;
-		queue->taskWaitingForIt = actualTask;
-		os_exit_critical_zone();
 
-		os_CpuYield();
 	}
-
-	/* Realizar la remoción del elemento en la cola */
-	memcpy(data, queue->data + (queue->tailID * queue->elementSize), queue->elementSize);
-	queue->tailID++;
-	if (queue->tailID >= queue->maxElements)
+	else
 	{
-		queue->tailID = 0;
+		/* Mientras la cola esté vacia, poner la tarea actual en estado bloqueado y
+		 * ceder el CPU */
+		while (0 == queue->queueSize)
+		{
+			os_enter_critical_zone();
+			actualTask = os_getActualtask();
+			actualTask->state = os_task_state__blocked;
+			queue->taskWaitingForIt = actualTask;
+			os_exit_critical_zone();
+
+			os_CpuYield();
+		}
+
+		/* Realizar la remoción del elemento en la cola */
+		memcpy(data, queue->data + (queue->tailID * queue->elementSize), queue->elementSize);
+		queue->tailID++;
+		if (queue->tailID >= queue->maxElements)
+		{
+			queue->tailID = 0;
+		}
+		queue->queueSize--;
+		queue->taskWaitingForIt = NULL;
 	}
-	queue->queueSize--;
-	queue->taskWaitingForIt = NULL;
 }
 

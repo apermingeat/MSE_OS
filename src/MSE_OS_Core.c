@@ -44,7 +44,7 @@ typedef struct
 	bool contextChangeNeeded;
 	int16_t tasksInCriticalZone;
 	bool schedulingFromIRQ;
-
+	uint32_t systemClockTicks;
 } os_control_t;
 
 /*==================[Private data declaration]==============================*/
@@ -154,6 +154,8 @@ void os_Init(void)  {
 	os_control.tasksInCriticalZone = 0;
 
 	os_setSchedulingFromIRQ(false);
+
+	os_control.systemClockTicks = 0;
 }
 
 uint32_t getContextoSiguiente(uint32_t p_stack_actual)
@@ -243,6 +245,11 @@ void os_setError(os_control_error_t err, void* caller)
 {
 	os_control.error = err;
 	errorHook(caller);
+}
+
+uint32_t os_get_systemClockMs()
+{
+	return(os_control.systemClockTicks);
 }
 
 /******************************************************************************
@@ -499,6 +506,8 @@ static void setPendSV()
  *****************************************************************************/
 void SysTick_Handler(void)
 {
+	os_control.systemClockTicks++;
+
 	os_updateTicksInAllTaskBlocked();
 
 	os_schedule();

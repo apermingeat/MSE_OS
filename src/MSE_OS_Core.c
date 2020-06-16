@@ -34,7 +34,6 @@ typedef struct
 typedef struct
 {
 	os_schedule_control_t schedule;
-	os_TaskHandler_t *tasks[OS_MAX_ALLOWED_TASKS];
 	uint8_t actualTaskIndex;
 	uint8_t tasksAdded;
 	os_TaskHandler_t * actualTask;
@@ -128,13 +127,12 @@ void os_InitTask(os_TaskHandler_t *taskHandler,
 
 		os_control.schedule.tasksGroupedByPriority[priority].numberOfTasks++;
 
-		os_control.tasks[os_control.tasksAdded] = taskHandler;
 		os_control.tasksAdded++;
 	}
 }
 
-void os_Init(void)  {
-	uint8_t i;
+void os_Init(void)
+{
 
 	NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS)-1);
 
@@ -145,11 +143,6 @@ void os_Init(void)  {
 
 	os_control.error = os_control_error_none;
 	os_control.state = os_control_state__os_from_reset;
-
-	for (i = os_control.tasksAdded; i<OS_MAX_ALLOWED_TASKS; i++)
-	{
-		os_control.tasks[i] = NULL;
-	}
 
 	os_control.tasksInCriticalZone = 0;
 

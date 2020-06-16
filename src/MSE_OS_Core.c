@@ -1,15 +1,21 @@
 /*
- * MSE_OS_Core.c
+ * MSE_OS_API.c
  *
  *  Created on: 17 mayo 2020
  *      Author: Alejandro Permingeat
+ *
+ *  @brief Librería que contiene el núcleo
+ *         del sistema operativo
  */
 
+/*==================[inclusions]=============================================*/
 #include "MSE_OS_Core.h"
 #include "board.h"
 
+/*==================[macros and definitions]=================================*/
 #define OS_MAX_ALLOWED_TASKS	8
 
+/*==================[internal data definition]===============================*/
 typedef struct
 {
 	os_TaskHandler_t *tasks[OS_MAX_ALLOWED_TASKS];
@@ -41,10 +47,12 @@ typedef struct
 
 } os_control_t;
 
+/*==================[Private data declaration]==============================*/
+
 static os_control_t os_control;
 static os_TaskHandler_t os_idleTask;
 
-
+/*==================[Weak functions definition]=============================*/
 
 void __attribute__((weak)) returnHook(void)  {
 	while(1);
@@ -65,23 +73,20 @@ void __attribute__((weak)) errorHook(void *caller)  {
 	while(1);
 }
 
+/*==================[Static headers]=========================================*/
+
 static void setPendSV();
 static void os_schedule();
+static void initIdleTask();
 
-/*************************************************************************************************
-	 *  @brief Inicializa las tareas que correran en el OS.
-     *
-     *  @details
-     *   Inicializa una tarea para que pueda correr en el OS implementado.
-     *   Es necesario llamar a esta funcion para cada tarea antes que inicie
-     *   el OS.
-     *
-	 *  @param *taskHandler			Puntero al handler de tarea que se desea inicializar.
-	 *  @param *entryPoint			Puntero a la Rutina que se ejecutará en dicha tarea
-	 *  @param priority				Prioridad de la tares (0 mayor prioridad -- 4 menor prioridad)
-	 *  @return     None.
-***************************************************************************************************/
-void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priority)
+
+/******************************************************************************
+ * Funciones públicas (descripción de las mimas en MSE_OS_API.h)
+ *****************************************************************************/
+
+void os_InitTask(os_TaskHandler_t *taskHandler,
+		void* entryPoint,
+		uint8_t priority)
 {
 
 	if (os_control.tasksAdded >= OS_MAX_ALLOWED_TASKS)
@@ -109,7 +114,8 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priori
 
 		taskHandler->entryPoint = entryPoint;
 
-		taskHandler->stackPointer = (uint32_t) (taskHandler->stack + STACK_SIZE/4 - STACK_FRAME_ALL_RECORDS_SIZE);
+		taskHandler->stackPointer = (uint32_t)
+				(taskHandler->stack + STACK_SIZE/4 - STACK_FRAME_ALL_RECORDS_SIZE);
 
 		taskHandler->state = os_task_state__ready;
 
@@ -125,27 +131,133 @@ void os_InitTask(os_TaskHandler_t *taskHandler, void* entryPoint, uint8_t priori
 		os_control.tasks[os_control.tasksAdded] = taskHandler;
 		os_control.tasksAdded++;
 	}
-
-
 }
 
-/*************************************************************************************************
-	 *  @brief Fuerza una ejecucion del scheduler.
-     *
-     *  @details
-     *   En los casos que un delay de una tarea comience a ejecutarse instantes luego de que
-     *   ocurriese un scheduling, se despericia mucho tiempo hasta el proximo tick de sistema,
-     *   por lo que se fuerza un scheduling y un cambio de contexto si es necesario.
-     *
-	 *  @param 		None
-	 *  @return     None.
-***************************************************************************************************/
+void os_Init(void)  {
+	uint8_t i;
+
+	NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS)-1);
+
+	initIdleTask();
+
+	os_control.actualTask = NULL;
+	os_control.nextTask = NULL;
+
+	os_control.error = os_control_error_none;
+	os_control.state = os_control_state__os_from_reset;
+
+	for (i = os_control.tasksAdded; i<OS_MAX_ALLOWED_TASKS; i++)
+	{
+		os_control.tasks[i] = NULL;
+	}
+
+	os_control.tasksInCriticalZone = 0;
+
+	os_setSchedulingFromIRQ(false);
+}
+
+uint32_t getContextoSiguiente(uint32_t p_stack_actual)
+{
+	/* por defecto continuo con la tarea actual*/
+	uint32_t p_stack_siguiente = p_stack_actual;
+
+	if (os_control_state__os_from_reset == os_control.state)
+	{
+		p_stack_siguiente = os_control.actualTask->stackPointer;
+		os_control.actualTask->state = os_task_state__running;
+		os_control.state = os_control_state__os_running;
+	}
+	else
+	{
+
+		os_control.actualTask->stackPointer = p_stack_actual;
+
+		if (os_task_state__running == os_control.actualTask->state)
+		{
+			os_control.actualTask->state = os_task_state__ready;
+		}
+
+		p_stack_siguiente = os_control.nextTask->stackPointer;
+
+		os_control.actualTask = os_control.nextTask;
+		os_control.actualTask->state = os_task_state__running;
+
+	}
+
+	return(p_stack_siguiente);
+}
+
 void os_CpuYield(void)
 {
 	os_schedule();
 }
 
-void initIdleTask()
+
+os_TaskHandler_t* os_getActualtask()
+{
+	return (os_control.actualTask);
+}
+
+os_control_state_t os_get_controlState()
+{
+	return(os_control.state);
+}
+
+void os_set_controlState(os_control_state_t newState)
+{
+	os_control.state = newState;
+}
+
+void os_enter_critical_zone()
+{
+	__disable_irq();
+	os_control.tasksInCriticalZone++;
+}
+
+void os_exit_critical_zone()
+{
+	os_control.tasksInCriticalZone--;
+	if (0 >= os_control.tasksInCriticalZone)
+	{
+		os_control.tasksInCriticalZone = 0;
+		__enable_irq();
+	}
+}
+
+void os_setSchedulingFromIRQ()
+{
+	os_control.schedulingFromIRQ = true;
+}
+
+void os_clearSchedulingFromIRQ()
+{
+	os_control.schedulingFromIRQ = false;
+}
+
+bool os_isSchedulingFromIRQ()
+{
+	return(os_control.schedulingFromIRQ);
+}
+
+void os_setError(os_control_error_t err, void* caller)
+{
+	os_control.error = err;
+	errorHook(caller);
+}
+
+/******************************************************************************
+ * Funciones privadas
+ *****************************************************************************/
+/******************************************************************************
+ *  @brief Inicialización de la tarea Idle
+ *
+ *  @details
+ *   La tarea Idle es una tarea que se ejecuta cuando ninguna otra tarea
+ *   esté en condiciones de ser ejecutada
+ *
+ *  @return     none.
+ *****************************************************************************/
+static void initIdleTask()
 {
 	os_idleTask.stack[STACK_SIZE/4 - XPSR] = INIT_XPSR;					//necesario para bit thumb
 	os_idleTask.stack[STACK_SIZE/4 - PC_REG] = (uint32_t)taskIdleHook;		//direccion de la tarea (ENTRY_POINT)
@@ -167,47 +279,17 @@ void initIdleTask()
 	os_idleTask.taskID = OS_IDLE_TASK_ID;
 }
 
-
-/*************************************************************************************************
-	 *  @brief Inicializa el OS.
-     *
-     *  @details
-     *   Inicializa el OS seteando la prioridad de PendSV como la mas baja posible. Es necesario
-     *   llamar esta funcion antes de que inicie el sistema. Es mandatorio llamarla luego de
-     *   inicializar las tareas
-     *
-	 *  @param 		None.
-	 *  @return     None.
-***************************************************************************************************/
-void os_Init(void)  {
-	uint8_t i;
-
-	/*
-	 * Todas las interrupciones tienen prioridad 0 (la maxima) al iniciar la ejecucion. Para que
-	 * no se de la condicion de fault mencionada en la teoria, debemos bajar su prioridad en el
-	 * NVIC. La cuenta matematica que se observa da la probabilidad mas baja posible.
-	 */
-	NVIC_SetPriority(PendSV_IRQn, (1 << __NVIC_PRIO_BITS)-1);
-
-
-	initIdleTask();
-
-	os_control.actualTask = NULL;
-	os_control.nextTask = NULL;
-
-	os_control.error = os_control_error_none;
-	os_control.state = os_control_state__os_from_reset;
-
-	for (i = os_control.tasksAdded; i<OS_MAX_ALLOWED_TASKS; i++)
-	{
-		os_control.tasks[i] = NULL;
-	}
-
-	os_control.tasksInCriticalZone = 0;
-
-	os_setSchedulingFromIRQ(false);
-}
-
+/******************************************************************************
+ *  @brief Rutina de scheduling para tareas de la misma prioridad
+ *
+ *  @details
+ *   Esta rutina es una rutina auxiliar utilizada por el scheduler.
+ *   Particularmente se ocupa de seleccionar una tarea dentro de
+ *   un conjunto de tareas de la misma prioridad
+ *
+ *  @param priority					prioridad del grupo de tareas a analizar
+ *  @return     none.
+ *****************************************************************************/
 static os_TaskHandler_t * os_select_next_task_by_pririty(uint8_t priority)
 {
 	uint8_t id;
@@ -279,18 +361,16 @@ static os_TaskHandler_t * os_select_next_task_by_pririty(uint8_t priority)
 	return (taskSelected);
 }
 
-
-/*************************************************************************************************
-	 *  @brief Implementa la política de scheduling.
-     *
-     *  @details
-     *   Segun el critero al momento de desarrollo, determina que tarea debe ejecutarse luego, y
-     *   por lo tanto provee los punteros correspondientes para el cambio de contexto. Esta
-     *   implementacion de scheduler es muy sencilla, del tipo Round-Robin
-     *
-	 *  @param 		None.
-	 *  @return     None.
-***************************************************************************************************/
+/******************************************************************************
+ *  @brief Implementa la política de scheduling.
+ *
+ *  @details
+ *   Implementa una política de scheduling con prioridades. Para aquellas
+ *   tareas que tengan la misma prioridad, ejecuta una política de
+ *   scheduling
+ *
+ *  @return     none.
+ *****************************************************************************/
 static void os_schedule()
 {
 	uint8_t priority = 0;
@@ -343,7 +423,17 @@ static void os_schedule()
 	}
 }
 
-void os_updateTicksInAllTaskBlocked()
+/******************************************************************************
+ *  @brief Actualiza los ticks restantes en las tareas bloqueadas
+ *
+ *  @details
+ *   Para aquellas tareas que están bloqueadas y tienen que esperar una
+ *   cierta cantidad de ticks, actualiza los ticks restantes.
+ *   Esta rutina debe llamarse cada vez que se produce un tick del sistema.
+ *
+ *  @return     none.
+ *****************************************************************************/
+static void os_updateTicksInAllTaskBlocked()
 {
 	uint8_t priorityID;
 	uint8_t i;
@@ -364,27 +454,15 @@ void os_updateTicksInAllTaskBlocked()
 	}
 }
 
-/*************************************************************************************************
-	 *  @brief SysTick Handler.
-     *
-     *  @details
-     *   El handler del Systick no debe estar a la vista del usuario. Dentro se setea como
-     *   pendiente la excepcion PendSV.
-     *
-	 *  @param 		None.
-	 *  @return     None.
-***************************************************************************************************/
-void SysTick_Handler(void)
-{
-	os_updateTicksInAllTaskBlocked();
-
-	os_schedule();
-
-	/*Ejecutar el hook asociado al tick*/
-	tickHook();
-}
-
-void setPendSV()
+/******************************************************************************
+ *  @brief Activa el flag de PendSV.
+ *
+ *  @details
+ *   Habilita el bit correspondiente a la excepción de PendSV.
+ *
+ *  @return     none.
+ *****************************************************************************/
+static void setPendSV()
 {
 	/**
 	 * Se setea el bit correspondiente a la excepcion PendSV
@@ -402,103 +480,32 @@ void setPendSV()
 	 * completed before next instruction is executed
 	 */
 	__DSB();
-
-
 }
 
 
 
-/*************************************************************************************************
-	 *  @brief Get contexto siguiente.
-     *
-     *  @details
-     *   Esta rutina determinará cual tarea debe ejecutarse a continuación. Para ello devolverá
-     *   un puntero al stack de la siguiente tarea a ejecutar
-     *
-	 *  @param 		None.
-	 *  @return     None.
-***************************************************************************************************/
-uint32_t getContextoSiguiente(uint32_t p_stack_actual)
+/******************************************************************************
+ * Handler de interrupciones
+ *****************************************************************************/
+
+/******************************************************************************
+ *  @brief Handler de la interrupción de SysTick.
+ *
+ *  @details
+ *   Ejecuta el scheduling para determinar cual será la próxima tarea a
+ *   ejecutarse y ejecuta el tickHook.
+ *
+ *  @return     none.
+ *****************************************************************************/
+void SysTick_Handler(void)
 {
-	uint32_t p_stack_siguiente = p_stack_actual; /* por defecto continuo con la tarea actual*/
+	os_updateTicksInAllTaskBlocked();
 
-	if (os_control_state__os_from_reset == os_control.state)
-	{
-		p_stack_siguiente = os_control.actualTask->stackPointer;
-		os_control.actualTask->state = os_task_state__running;
-		os_control.state = os_control_state__os_running;
-	}
-	else
-	{
+	os_schedule();
 
-		os_control.actualTask->stackPointer = p_stack_actual;
-
-		if (os_task_state__running == os_control.actualTask->state)
-		{
-			os_control.actualTask->state = os_task_state__ready;
-		}
-
-		p_stack_siguiente = os_control.nextTask->stackPointer;
-
-		os_control.actualTask = os_control.nextTask;
-		os_control.actualTask->state = os_task_state__running;
-
-	}
-
-	return(p_stack_siguiente);
+	/*Ejecutar el hook asociado al tick*/
+	tickHook();
 }
 
 
-os_TaskHandler_t* os_getActualtask()
-{
-	return (os_control.actualTask);
-}
-
-os_control_state_t os_get_controlState()
-{
-	return(os_control.state);
-}
-
-void os_set_controlState(os_control_state_t newState)
-{
-	os_control.state = newState;
-}
-
-void os_enter_critical_zone()
-{
-	__disable_irq();
-	os_control.tasksInCriticalZone++;
-}
-
-void os_exit_critical_zone()
-{
-	os_control.tasksInCriticalZone--;
-	if (0 >= os_control.tasksInCriticalZone)
-	{
-		os_control.tasksInCriticalZone = 0;
-		__enable_irq();
-	}
-
-}
-
-void os_setSchedulingFromIRQ()
-{
-	os_control.schedulingFromIRQ = true;
-}
-
-void os_clearSchedulingFromIRQ()
-{
-	os_control.schedulingFromIRQ = false;
-}
-
-bool os_isSchedulingFromIRQ()
-{
-	return(os_control.schedulingFromIRQ);
-}
-
-void os_setError(os_control_error_t err, void* caller)
-{
-	os_control.error = err;
-	errorHook(caller);
-}
 

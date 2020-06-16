@@ -32,7 +32,7 @@
  *  @param irq					ID de interrupción.
  *  @param *isr_user_handler	Puntero al handler de interrupcion
  *  @return     True si tuvo éxito.
-******************************************************************************/
+ *****************************************************************************/
 bool os_insertIRQ(LPC43XX_IRQn_Type irq, void* isr_user_handler);
 
 /******************************************************************************
@@ -43,7 +43,7 @@ bool os_insertIRQ(LPC43XX_IRQn_Type irq, void* isr_user_handler);
  *
  *  @param irq					ID de interrupción.
  *  @return     True si tuvo éxito.
-******************************************************************************/
+ *****************************************************************************/
 bool os_removeIRQ(LPC43XX_IRQn_Type irq);
 
 #endif /* INC_MSE_OS_IRQ_H_ */

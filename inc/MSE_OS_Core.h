@@ -23,7 +23,7 @@
 
 #define OS_IDLE_TASK_ID	0xFF
 
-#define OS_CONTROL_MAX_PRIORITY	4
+#define OS_CONTROL_MAX_PRIORITY	3
 
 typedef enum
 {

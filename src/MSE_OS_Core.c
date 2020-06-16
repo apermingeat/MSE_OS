@@ -401,7 +401,7 @@ static void os_schedule()
 		if (os_control_state__os_running == os_control.state)
 		{
 			os_control.state = os_control_state__os_scheduling;
-			while ((OS_CONTROL_MAX_PRIORITY > priority) && (NULL == taskSelected))
+			while ((OS_CONTROL_MAX_PRIORITY >= priority) && (NULL == taskSelected))
 			{
 				taskSelected = os_select_next_task_by_pririty(priority);
 				priority++;
@@ -437,7 +437,7 @@ static void os_updateTicksInAllTaskBlocked()
 {
 	uint8_t priorityID;
 	uint8_t i;
-	for (priorityID = 0; priorityID< OS_CONTROL_MAX_PRIORITY; priorityID++)
+	for (priorityID = 0; priorityID <= OS_CONTROL_MAX_PRIORITY; priorityID++)
 	{
 		for (i = 0; i< os_control.schedule.tasksGroupedByPriority[priorityID].numberOfTasks; i++)
 		{

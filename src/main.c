@@ -22,11 +22,18 @@
 #define MAX_STRING_MESSAGE	256
 #define MAX_STRING_LENGTH_FOR_NUMBER_VALUE	20
 
+#define PRIORIDAD_MAXIMA		0
+#define PRIORIDAD_ALTA			1
+#define PRIORIDAD_MEDIA			2
+#define PRIORIDAD_BAJA			3
+
 /*==================[Global data declaration]==============================*/
 
-os_TaskHandler_t task1, task2, task3, task4, task5, button_task;
-os_Semaphore_t	semLed1, semLed2, semLed3;
-os_Queue_t		queue1, queueLed, queueUart;
+os_TaskHandler_t handler_tareaControl;
+os_TaskHandler_t handler_tareaLed;
+os_TaskHandler_t handler_tareaNotificacionUart;
+
+os_Queue_t		queueEvents, queueLed, queueUart;
 
 /*==================[internal functions declaration]=========================*/
 
@@ -52,7 +59,7 @@ typedef enum
 typedef struct
 {
 	eventos_t evento;
-} queueElement_t;
+} eventQueueElement_t;
 
 
 typedef enum
@@ -80,9 +87,15 @@ typedef struct
 
 /*==================[internal functions definition]==========================*/
 
-/** @brief hardware initialization function
- *	@return none
- */
+/******************************************************************************
+ *  @brief Inicialización del hardware
+ *
+ *  @details
+ *   Inicializa el Systick y los pines
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
 static void initHardware(void)  {
 	Board_Init();
 	SystemCoreClockUpdate();
@@ -130,10 +143,23 @@ static void initHardware(void)  {
 
 /*==================[Definicion de tareas para el OS]==========================*/
 
-void tareaControl()
+/******************************************************************************
+ *  @brief Tarea de control general
+ *
+ *  @details
+ *   Esta tarea contiene la lógica de aplicación. Implementa
+ *   una máquina de estados cuyos eventos los recibe a través de la
+ *   cola queueEvents y ordena mostrar por los leds y por la UART
+ *   información, a través de las colas queueLed y queueUART
+ *   respectivamente
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
+void controlTask()
 {
 	estados_t estado;
-	queueElement_t mesg;
+	eventQueueElement_t mesg;
 	ledQueueElement_t ledMsg;
 	uartQueueElement_t uartMsg;
 
@@ -149,7 +175,7 @@ void tareaControl()
 	while(1)
 	{
 
-		os_queue_remove(&queue1, &mesg);
+		os_queue_remove(&queueEvents, &mesg);
 
 		switch (estado)
 		{
@@ -276,6 +302,17 @@ void tareaControl()
 	}
 }
 
+/******************************************************************************
+ *  @brief Tarea de control de leds
+ *
+ *  @details
+ *   Esta tarea se ocupa de mostrar en los leds la información recibida
+ *   desde queueLed (básicamente que led debe encenderse y durantecuanto
+ *   tiempo)
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
 void ledsControlTask()
 {
 	gpioMap_t led;
@@ -296,7 +333,17 @@ void ledsControlTask()
 	}
 }
 
-
+/******************************************************************************
+ *  @brief Tarea de notifiación por UART
+ *
+ *  @details
+ *   Esta tarea se ocupa de enviar por la UART un mensaje acerca de que led
+ *   se enciende, y los valores de t1 y t2. La información la recibe desde
+ *   la cola queueUART
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
 void uartNotificationTask()
 {
 	static char message[MAX_STRING_MESSAGE];
@@ -337,35 +384,76 @@ void uartNotificationTask()
 	}
 }
 
+/*==================[Definicion de manejadores de interrupción]================*/
+/******************************************************************************
+ *  @brief Interrupción de tecla 1 presionada
+ *
+ *  @details
+ *   Cuando se presiona la tecla 1, se notifica el evento insertándolo
+ *   a la cola queueEvents
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
 void tecla1_down_ISR()
 {
-	queueElement_t mesg;
+	eventQueueElement_t mesg;
 	mesg.evento = tecla1_down;
-	os_queue_insert(&queue1, &mesg);
+	os_queue_insert(&queueEvents, &mesg);
 	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 0 ) );
 }
 
+/******************************************************************************
+ *  @brief Interrupción de tecla 1 liberada
+ *
+ *  @details
+ *   Cuando se libera la tecla 1, se notifica el evento insertándolo
+ *   a la cola queueEvents
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
 void tecla1_up_ISR()
 {
-	queueElement_t mesg;
+	eventQueueElement_t mesg;
 	mesg.evento = tecla1_up;
-	os_queue_insert(&queue1, &mesg);
+	os_queue_insert(&queueEvents, &mesg);
 	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 1 ) );
 }
 
+/******************************************************************************
+ *  @brief Interrupción de tecla 2 presionada
+ *
+ *  @details
+ *   Cuando se presiona la tecla 2, se notifica el evento insertándolo
+ *   a la cola queueEvents
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
 void tecla2_down_ISR()
 {
-	queueElement_t mesg;
+	eventQueueElement_t mesg;
 	mesg.evento = tecla2_down;
-	os_queue_insert(&queue1, &mesg);
+	os_queue_insert(&queueEvents, &mesg);
 	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 2 ) );
 }
 
+/******************************************************************************
+ *  @brief Interrupción de tecla 2 liberada
+ *
+ *  @details
+ *   Cuando se libera la tecla 2, se notifica el evento insertándolo
+ *   a la cola queueEvents
+ *
+ *  @param 	none
+ *  @return none
+ *****************************************************************************/
 void tecla2_up_ISR()
 {
-	queueElement_t mesg;
+	eventQueueElement_t mesg;
 	mesg.evento = tecla2_up;
-	os_queue_insert(&queue1, &mesg);
+	os_queue_insert(&queueEvents, &mesg);
 	Chip_PININT_ClearIntStatus( LPC_GPIO_PIN_INT, PININTCH( 3 ) );
 }
 
@@ -375,40 +463,23 @@ int main(void)  {
 
 	initHardware();
 
-	os_queue_init(&queue1, sizeof(queueElement_t));
+	os_queue_init(&queueEvents, sizeof(eventQueueElement_t));
 	os_queue_init(&queueLed, sizeof(ledQueueElement_t));
 	os_queue_init(&queueUart, sizeof(uartQueueElement_t));
 
-	os_InitTask(&task1, tareaControl, 1);
-	os_InitTask(&task2, ledsControlTask, 0);
-	os_InitTask(&task3, uartNotificationTask, 2);
+	os_InitTask(&handler_tareaControl, controlTask, PRIORIDAD_ALTA);
+	os_InitTask(&handler_tareaLed, ledsControlTask, PRIORIDAD_MAXIMA);
+	os_InitTask(&handler_tareaNotificacionUart, uartNotificationTask, PRIORIDAD_MEDIA);
 
 	os_insertIRQ(PIN_INT0_IRQn, tecla1_down_ISR);
 	os_insertIRQ(PIN_INT1_IRQn,tecla1_up_ISR);
 	os_insertIRQ(PIN_INT2_IRQn, tecla2_down_ISR);
 	os_insertIRQ(PIN_INT3_IRQn,tecla2_up_ISR);
 
-
-
 	os_Init();
 
 	while (1) {
 		__WFI();
-	}
-}
-
-static uint32_t global_tickCounter = 0;
-void tickHook(void)
-{
-	global_tickCounter++;
-}
-
-static uint32_t globla_idleTaskCounter = 0;
-void taskIdleHook()
-{
-	while(1)
-	{
-		globla_idleTaskCounter++;
 	}
 }
 

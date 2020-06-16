@@ -135,5 +135,6 @@ bool os_isSchedulingFromIRQ();
 
 void os_setError(os_control_error_t err, void* caller);
 
+uint32_t os_get_systemClockMs();
 
 #endif /* ISO_I_2020_MSE_OS_INC_MSE_OS_CORE_H_ */

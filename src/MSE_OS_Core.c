@@ -38,6 +38,7 @@ typedef struct
 	bool contextChangeNeeded;
 	int16_t tasksInCriticalZone;
 	bool schedulingFromIRQ;
+	uint32_t systemClockTicks;
 
 } os_control_t;
 
@@ -206,6 +207,8 @@ void os_Init(void)  {
 	os_control.tasksInCriticalZone = 0;
 
 	os_setSchedulingFromIRQ(false);
+
+	os_control.systemClockTicks = 0;
 }
 
 static os_TaskHandler_t * os_select_next_task_by_pririty(uint8_t priority)
@@ -376,6 +379,8 @@ void os_updateTicksInAllTaskBlocked()
 ***************************************************************************************************/
 void SysTick_Handler(void)
 {
+	os_control.systemClockTicks++;
+
 	os_updateTicksInAllTaskBlocked();
 
 	os_schedule();
@@ -502,3 +507,7 @@ void os_setError(os_control_error_t err, void* caller)
 	errorHook(caller);
 }
 
+uint32_t os_get_systemClockMs()
+{
+	return(os_control.systemClockTicks);
+}

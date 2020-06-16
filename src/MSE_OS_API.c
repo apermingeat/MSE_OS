@@ -1,14 +1,25 @@
 /*
  * MSE_OS_API.c
  *
- *  Created on: 13 jun. 2020
- *      Author: A. Permingeat
+ *  Created on: 13 junio 2020
+ *      Author: Alejandro Permingeat
+ *
+ *  @brief Librería que contiene la interface pública
+ *         del sistema operativo
  */
 
+/*==================[inclusions]=============================================*/
 #include "MSE_OS_API.h"
 #include "MSE_OS_Core.h"
 #include <string.h>
 
+/******************************************************************************
+ * Funciones públicas (descripción de las mimas en MSE_OS_API.h)
+ *****************************************************************************/
+
+/******************************************************************************
+ *	Esperas
+ ******************************************************************************/
 void os_Delay(uint32_t ticks)
 {
 	os_TaskHandler_t* actualTask;

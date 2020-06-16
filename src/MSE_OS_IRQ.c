@@ -1,13 +1,24 @@
 /*
  * MSE_OS_IRQ.c
  *
- *  Created on: 15 jun. 2020
+ *  Created on: 15 junio 2020
  *      Author: Alejandro Permingeat
+ *
+ *  @brief Librería que contiene el manejo de interrupciones
+ *         del sistema operativo
  */
 
+/*==================[inclusions]=============================================*/
 #include "MSE_OS_IRQ.h"
 
-static void* isr_user_handler_vector[OS_NUMBER_OF_IRQ];				//vector de punteros a funciones para nuestras interrupciones
+
+/*==================[Global data declaration]==============================*/
+
+static void* isr_user_handler_vector[OS_NUMBER_OF_IRQ];	/** vector de punteros a funciones para nuestras interrupciones*/
+
+/******************************************************************************
+ * Funciones públicas (descripción de las mimas en MSE_OS_IRQ.h)
+ *****************************************************************************/
 
 bool os_insertIRQ(LPC43XX_IRQn_Type irq, void* isr_user_handler)
 {
@@ -39,7 +50,23 @@ bool os_removeIRQ(LPC43XX_IRQn_Type irq)
 	return result;
 }
 
-void os_IRQHandler(LPC43XX_IRQn_Type IRQn)
+
+/******************************************************************************
+ * Funciones privadas
+ *****************************************************************************/
+
+/******************************************************************************
+ *  @brief Handler de interrupción.
+ *
+ *  @details
+ *   Todas las interrupciones serán atendidas por un mismo handler que
+ *   pertenece al sistema operativo. Allí dicho handler invocará a los
+ *   handlers insertados por los usuarios para cada interrupción
+ *
+ *  @param IRQn					ID de interrupción.
+ *  @return     True si tuvo éxito.
+******************************************************************************/
+static void os_IRQHandler(LPC43XX_IRQn_Type IRQn)
 {
 	void (*user_IRQ_handler)(void);
 
@@ -48,7 +75,8 @@ void os_IRQHandler(LPC43XX_IRQn_Type IRQn)
 	/*Guardar estado anterior del sistema operativo*/
 	previus_os_control_state = os_get_controlState();
 
-	/*Establecer el estado del sistema operativo para indicar que está atendiendo una interrupción */
+	/*Establecer el estado del sistema operativo para
+	 * indicar que está atendiendo una interrupción */
 	os_set_controlState(os_control_state__running_from_IRQ);
 
 	/*Obtener el handler de interrupción asociado a la interrupción actual */
@@ -63,7 +91,8 @@ void os_IRQHandler(LPC43XX_IRQn_Type IRQn)
 	/*Restablecer el estado anterior del sistema operativo*/
 	os_set_controlState(previus_os_control_state);
 
-	/*Limpiar el flag de la interrupción, sino volvería a generarse la misma interrupción*/
+	/*Limpiar el flag de la interrupción, sino volvería a generarse
+	 * la misma interrupción*/
 	NVIC_ClearPendingIRQ(IRQn);
 
 	 /* Si hubo alguna llamada desde una interrupcion a una api liberando un evento, entonces
